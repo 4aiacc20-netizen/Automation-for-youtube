@@ -1,10 +1,41 @@
 import os
+from gtts import gTTS
+from moviepy.editor import *
+from PIL import Image, ImageDraw, ImageFont
 import google.auth.transport.requests
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+import datetime
 
-# Load from secrets
+# ============ STEP 1: DAILY SCRIPT ==============
+script_text = "Success is not final, failure is not fatal. It is the courage to continue that counts."
+
+# ============ STEP 2: TEXT TO SPEECH =============
+tts = gTTS(text=script_text, lang="en")
+tts.save("audio.mp3")
+
+# ============ STEP 3: BACKGROUND VIDEO ============
+# Create a simple background (solid color or image)
+clip_duration = 15  # 15s short
+bg_clip = ColorClip(size=(720,1280), color=(30,30,30), duration=clip_duration)  # black bg
+
+# Add text overlay
+txt_clip = TextClip(
+    script_text,
+    fontsize=60,
+    color='white',
+    method='caption',
+    size=(680, None),
+    align='center'
+).set_position('center').set_duration(clip_duration)
+
+# Add audio
+audio = AudioFileClip("audio.mp3")
+final_clip = CompositeVideoClip([bg_clip, txt_clip]).set_audio(audio)
+final_clip.write_videofile("short.mp4", fps=24)
+
+# ============ STEP 4: UPLOAD TO YOUTUBE ============
 CLIENT_ID = os.getenv("YT_CLIENT_ID")
 CLIENT_SECRET = os.getenv("YT_CLIENT_SECRET")
 REFRESH_TOKEN = os.getenv("YT_REFRESH_TOKEN")
@@ -20,15 +51,16 @@ creds = Credentials(
 creds.refresh(google.auth.transport.requests.Request())
 youtube = build("youtube", "v3", credentials=creds)
 
-# Example: upload your short.mp4
+today = datetime.date.today().strftime("%B %d, %Y")
+
 request = youtube.videos().insert(
     part="snippet,status",
     body={
         "snippet": {
-            "title": "Daily Auto-Generated Short 🚀",
-            "description": "Uploaded automatically via GitHub Actions",
-            "tags": ["AI", "Shorts", "Automation"],
-            "categoryId": "22"  # People & Blogs
+            "title": f"Daily Motivation 🚀 {today}",
+            "description": script_text,
+            "tags": ["Motivation", "Shorts", "AI"],
+            "categoryId": "22"
         },
         "status": {
             "privacyStatus": "public",
