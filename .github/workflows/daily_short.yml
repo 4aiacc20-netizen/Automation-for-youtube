@@ -1,0 +1,40 @@
+name: Daily YouTube Short
+
+on:
+  schedule:
+    # Runs at 13:00 UTC every day => 18:30 IST (Asia/Kolkata)
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick ffmpeg
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install moviepy google-api-python-client google-auth google-auth-oauthlib pillow requests pydub
+
+      - name: Run generator & uploader
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          PIXABAY_KEY: ${{ secrets.PIXABAY_KEY }}
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+          YT_TITLE: ${{ secrets.YT_TITLE }}
+          YT_DESC: ${{ secrets.YT_DESC }}
+          YT_TAGS: ${{ secrets.YT_TAGS }}
+        run: |
+          python generate_and_upload_short.py
