@@ -3,9 +3,11 @@ from gtts import gTTS
 from PIL import Image, ImageDraw, ImageFont
 import subprocess
 import datetime
+import textwrap
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+import google.auth.transport.requests
 
 # ---------------- CONFIG ----------------
 SCRIPT_TEXT = "Success is not final, failure is not fatal. It is the courage to continue that counts."
@@ -14,6 +16,7 @@ VIDEO_RES = (720, 1280)
 OUTPUT_VIDEO = "short.mp4"
 AUDIO_FILE = "audio.mp3"
 IMAGE_FILE = "frame.png"
+MUSIC_FILE = "background_music.mp3"  # optional, set to None if not used
 
 # ---------------- STEP 1: TEXT TO SPEECH ----------------
 tts = gTTS(text=SCRIPT_TEXT, lang="en")
@@ -23,22 +26,38 @@ tts.save(AUDIO_FILE)
 img = Image.new("RGB", VIDEO_RES, color=(0, 0, 0))
 draw = ImageDraw.Draw(img)
 
-# Use default font; for custom font, provide path to .ttf
+# Load font
 font_size = 50
 try:
     font = ImageFont.truetype("arial.ttf", font_size)
 except:
     font = ImageFont.load_default()
 
-text_w, text_h = draw.textsize(SCRIPT_TEXT, font=font)
-draw.text(
-    ((VIDEO_RES[0]-text_w)/2, (VIDEO_RES[1]-text_h)/2),
-    SCRIPT_TEXT, font=font, fill=(255, 255, 255)
-)
+# Wrap text to fit width
+max_width = VIDEO_RES[0] - 40
+lines = textwrap.wrap(SCRIPT_TEXT, width=25)  # adjust width for best fit
+
+# Calculate total height
+line_heights = []
+for line in lines:
+    bbox = draw.textbbox((0, 0), line, font=font)
+    line_heights.append(bbox[3] - bbox[1])
+total_height = sum(line_heights) + (len(lines)-1)*10  # 10px spacing
+
+# Draw each line centered
+current_y = (VIDEO_RES[1] - total_height) // 2
+for i, line in enumerate(lines):
+    bbox = draw.textbbox((0,0), line, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    x = (VIDEO_RES[0] - text_w) // 2
+    draw.text((x, current_y), line, font=font, fill=(255,255,255))
+    current_y += text_h + 10
+
 img.save(IMAGE_FILE)
 
 # ---------------- STEP 3: CREATE VIDEO USING FFMPEG ----------------
-subprocess.run([
+ffmpeg_cmd = [
     "ffmpeg", "-y",
     "-loop", "1",
     "-i", IMAGE_FILE,
@@ -47,9 +66,16 @@ subprocess.run([
     "-t", str(VIDEO_DURATION),
     "-pix_fmt", "yuv420p",
     "-c:a", "aac",
-    "-shortest",
-    OUTPUT_VIDEO
-])
+]
+
+# Add background music if exists
+if MUSIC_FILE and os.path.exists(MUSIC_FILE):
+    ffmpeg_cmd.extend(["-i", MUSIC_FILE, "-filter_complex", "[1:a][2:a]amix=inputs=2:duration=shortest"])
+else:
+    ffmpeg_cmd.extend(["-shortest"])
+
+ffmpeg_cmd.append(OUTPUT_VIDEO)
+subprocess.run(ffmpeg_cmd)
 
 print("✅ short.mp4 created!")
 
@@ -65,7 +91,7 @@ creds = Credentials(
     client_id=CLIENT_ID,
     client_secret=CLIENT_SECRET
 )
-creds.refresh(Request=google.auth.transport.requests.Request())
+creds.refresh(google.auth.transport.requests.Request())
 
 youtube = build("youtube", "v3", credentials=creds)
 
