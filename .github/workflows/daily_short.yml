@@ -2,12 +2,14 @@ name: Daily YouTube Short
 
 on:
   schedule:
-    - cron: '0 13 * * *'   # Runs every day at 13:00 UTC => 18:30 IST
+    # Runs every day at 13:00 UTC => 18:30 IST
+    - cron: '0 13 * * *'
   workflow_dispatch:
 
 jobs:
   build-and-run:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -16,7 +18,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install Python dependencies
+      - name: Install dependencies and run script
         run: |
           python -m pip install --upgrade pip
           pip install --no-cache-dir --upgrade \
@@ -28,11 +30,8 @@ jobs:
             google-auth-httplib2 \
             google-api-python-client
           python -c "import moviepy.editor; print('✅ MoviePy imported successfully!')"
-
-
-      - name: Run script
+          python generate_and_upload_short.py
         env:
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
-        run: python generate_and_upload_short.py
