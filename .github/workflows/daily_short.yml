@@ -22,7 +22,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
           python -m pip install --upgrade pip
-          pip install gTTS pillow google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
+          pip install gTTS pillow moviepy google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
 
       - name: Check FFmpeg
         run: ffmpeg -version
