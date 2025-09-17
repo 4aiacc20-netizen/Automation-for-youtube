@@ -1,40 +1,38 @@
 import os
 from gtts import gTTS
-import moviepy.editor as mp
-from PIL import Image, ImageDraw, ImageFont
+import subprocess
+import datetime
 import google.auth.transport.requests
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-import datetime
 
-# ============ STEP 1: DAILY SCRIPT ==============
+# ============ STEP 1: DAILY SCRIPT ============
 script_text = "Success is not final, failure is not fatal. It is the courage to continue that counts."
 
-# ============ STEP 2: TEXT TO SPEECH =============
+# ============ STEP 2: TEXT TO SPEECH ==========
 tts = gTTS(text=script_text, lang="en")
 tts.save("audio.mp3")
 
-# ============ STEP 3: BACKGROUND VIDEO ============
-clip_duration = 15  # 15s short
-bg_clip = mp.ColorClip(size=(720, 1280), color=(30, 30, 30), duration=clip_duration)  # black bg
+# ============ STEP 3: CREATE VIDEO WITH FFMPEG ============
+# Background (15s black screen + centered text)
+subprocess.run([
+    "ffmpeg", "-y",
+    "-f", "lavfi", "-i", "color=c=black:s=720x1280:d=15",
+    "-vf", f"drawtext=text='{script_text}':fontcolor=white:fontsize=40:x=(w-text_w)/2:y=(h-text_h)/2",
+    "-c:v", "libx264", "-pix_fmt", "yuv420p",
+    "video.mp4"
+])
 
-# Add text overlay
-txt_clip = mp.TextClip(
-    script_text,
-    fontsize=60,
-    color='white',
-    method='caption',
-    size=(680, None),
-    align='center'
-).set_position('center').set_duration(clip_duration)
+# Merge video + audio
+subprocess.run([
+    "ffmpeg", "-y",
+    "-i", "video.mp4", "-i", "audio.mp3",
+    "-c:v", "copy", "-c:a", "aac", "-shortest",
+    "short.mp4"
+])
 
-# Add audio
-audio = mp.AudioFileClip("audio.mp3")
-
-# Combine everything
-final_clip = mp.CompositeVideoClip([bg_clip, txt_clip]).set_audio(audio)
-final_clip.write_videofile("short.mp4", fps=24)
+print("✅ short.mp4 created!")
 
 # ============ STEP 4: UPLOAD TO YOUTUBE ============
 CLIENT_ID = os.getenv("YT_CLIENT_ID")
