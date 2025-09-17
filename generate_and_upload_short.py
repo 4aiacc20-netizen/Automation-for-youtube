@@ -1,57 +1,59 @@
 import os
-from moviepy.editor import *
-from google.cloud import texttospeech
+from gtts import gTTS
+from PIL import Image, ImageDraw, ImageFont
+import subprocess
 import datetime
-import google.auth.transport.requests
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# ----------------- CONFIG -----------------
+# ---------------- CONFIG ----------------
 SCRIPT_TEXT = "Success is not final, failure is not fatal. It is the courage to continue that counts."
-VIDEO_DURATION = 15  # seconds
-BACKGROUND_VIDEO = "background.mp4"  # optional: stock or animated background
-MUSIC_FILE = "background_music.mp3"  # optional: royalty-free music
+VIDEO_DURATION = 15
+VIDEO_RES = (720, 1280)
 OUTPUT_VIDEO = "short.mp4"
+AUDIO_FILE = "audio.mp3"
+IMAGE_FILE = "frame.png"
 
-# ----------------- STEP 1: TEXT TO SPEECH -----------------
-from gtts import gTTS
+# ---------------- STEP 1: TEXT TO SPEECH ----------------
 tts = gTTS(text=SCRIPT_TEXT, lang="en")
-tts.save("audio.mp3")
+tts.save(AUDIO_FILE)
 
-# ----------------- STEP 2: CREATE VIDEO -----------------
-clips = []
+# ---------------- STEP 2: CREATE IMAGE FRAME ----------------
+img = Image.new("RGB", VIDEO_RES, color=(0, 0, 0))
+draw = ImageDraw.Draw(img)
 
-# Background: stock video or black screen
-if os.path.exists(BACKGROUND_VIDEO):
-    bg_clip = VideoFileClip(BACKGROUND_VIDEO).subclip(0, VIDEO_DURATION).resize((720,1280))
-else:
-    bg_clip = ColorClip(size=(720,1280), color=(0,0,0), duration=VIDEO_DURATION)
+# Use default font; for custom font, provide path to .ttf
+font_size = 50
+try:
+    font = ImageFont.truetype("arial.ttf", font_size)
+except:
+    font = ImageFont.load_default()
 
-clips.append(bg_clip)
+text_w, text_h = draw.textsize(SCRIPT_TEXT, font=font)
+draw.text(
+    ((VIDEO_RES[0]-text_w)/2, (VIDEO_RES[1]-text_h)/2),
+    SCRIPT_TEXT, font=font, fill=(255, 255, 255)
+)
+img.save(IMAGE_FILE)
 
-# Text overlay
-txt_clip = TextClip(SCRIPT_TEXT, fontsize=50, color='white', font='Arial', method='caption', size=(700, None))
-txt_clip = txt_clip.set_position('center').set_duration(VIDEO_DURATION)
-clips.append(txt_clip)
+# ---------------- STEP 3: CREATE VIDEO USING FFMPEG ----------------
+subprocess.run([
+    "ffmpeg", "-y",
+    "-loop", "1",
+    "-i", IMAGE_FILE,
+    "-i", AUDIO_FILE,
+    "-c:v", "libx264",
+    "-t", str(VIDEO_DURATION),
+    "-pix_fmt", "yuv420p",
+    "-c:a", "aac",
+    "-shortest",
+    OUTPUT_VIDEO
+])
 
-# Merge clips
-final_video = CompositeVideoClip(clips)
+print("✅ short.mp4 created!")
 
-# Add audio
-audio_clip = AudioFileClip("audio.mp3")
-if os.path.exists(MUSIC_FILE):
-    music_clip = AudioFileClip(MUSIC_FILE).volumex(0.2)
-    audio_clip = CompositeAudioClip([audio_clip, music_clip])
-
-final_video = final_video.set_audio(audio_clip)
-
-# Export final video
-final_video.write_videofile(OUTPUT_VIDEO, fps=25, codec='libx264', audio_codec='aac')
-
-print("✅ High-quality short.mp4 created!")
-
-# ----------------- STEP 3: UPLOAD TO YOUTUBE -----------------
+# ---------------- STEP 4: UPLOAD TO YOUTUBE ----------------
 CLIENT_ID = os.getenv("YT_CLIENT_ID")
 CLIENT_SECRET = os.getenv("YT_CLIENT_SECRET")
 REFRESH_TOKEN = os.getenv("YT_REFRESH_TOKEN")
@@ -63,12 +65,11 @@ creds = Credentials(
     client_id=CLIENT_ID,
     client_secret=CLIENT_SECRET
 )
-creds.refresh(google.auth.transport.requests.Request())
+creds.refresh(Request=google.auth.transport.requests.Request())
 
 youtube = build("youtube", "v3", credentials=creds)
 
 today = datetime.date.today().strftime("%B %d, %Y")
-
 request = youtube.videos().insert(
     part="snippet,status",
     body={
@@ -78,10 +79,7 @@ request = youtube.videos().insert(
             "tags": ["Motivation", "Shorts", "AI"],
             "categoryId": "22"
         },
-        "status": {
-            "privacyStatus": "public",
-            "selfDeclaredMadeForKids": False
-        }
+        "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False}
     },
     media_body=MediaFileUpload(OUTPUT_VIDEO)
 )
