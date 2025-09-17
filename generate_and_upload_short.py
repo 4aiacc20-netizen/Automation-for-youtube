@@ -1,4 +1,5 @@
 import os
+import requests
 from gtts import gTTS
 from PIL import Image, ImageDraw, ImageFont
 import subprocess
@@ -14,11 +15,26 @@ SCRIPT_TEXT = "Success is not final, failure is not fatal. It is the courage to 
 VIDEO_RES = (720, 1280)
 OUTPUT_VIDEO = "short_final.mp4"
 AUDIO_FILE = "tts_audio.mp3"
-MUSIC_FILE = "background_music.mp3"  # optional, set None if not used
-IMAGE_FILES = ["bg1.jpg", "bg2.jpg"]  # background images
+MUSIC_FILE = "background_music.mp3"  # optional
 FONT_SIZE = 70
 CLIP_DURATION = 5  # seconds per image
-TMP_VIDEO_CLIPS = []  # temp video clips list
+TMP_VIDEO_CLIPS = []
+
+# Unsplash URLs for copyright-free images
+IMAGE_URLS = [
+    "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=720&q=80",
+    "https://images.unsplash.com/photo-1495567720989-cebdbdd97913?auto=format&fit=crop&w=720&q=80"
+]
+
+# ---------------- STEP 0: DOWNLOAD IMAGES ----------------
+IMAGE_FILES = []
+for idx, url in enumerate(IMAGE_URLS):
+    img_file = f"bg_{idx}.jpg"
+    r = requests.get(url)
+    with open(img_file, "wb") as f:
+        f.write(r.content)
+    IMAGE_FILES.append(img_file)
+print("✅ Background images downloaded")
 
 # ---------------- STEP 1: TEXT TO SPEECH ----------------
 tts = gTTS(text=SCRIPT_TEXT, lang="en")
@@ -50,7 +66,7 @@ def create_text_image(bg_image_path, output_path):
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
         x = (VIDEO_RES[0] - text_w) // 2
-        # shadow for better visibility
+        # shadow
         draw.text((x+2, current_y+2), line, font=font, fill=(0,0,0))
         draw.text((x, current_y), line, font=font, fill=(255,255,255))
         current_y += text_h + 10
@@ -75,7 +91,7 @@ for idx, frame_file in enumerate(frame_files):
         "-c:v", "libx264",
         "-t", str(CLIP_DURATION),
         "-pix_fmt", "yuv420p",
-        "-vf", "zoompan=z='min(zoom+0.0015,1.05)':d=125",  # subtle zoom effect
+        "-vf", "zoompan=z='min(zoom+0.0015,1.05)':d=125",
         clip_file
     ]
     subprocess.run(ffmpeg_cmd)
@@ -97,7 +113,6 @@ subprocess.run([
 
 # ---------------- STEP 5: ADD AUDIO (TTS + MUSIC) ----------------
 if MUSIC_FILE and os.path.exists(MUSIC_FILE):
-    # mix TTS and music
     final_audio = "final_audio.mp3"
     subprocess.run([
         "ffmpeg", "-y",
@@ -109,7 +124,6 @@ if MUSIC_FILE and os.path.exists(MUSIC_FILE):
 else:
     final_audio = AUDIO_FILE
 
-# merge video and audio
 subprocess.run([
     "ffmpeg", "-y",
     "-i", concat_video,
@@ -119,7 +133,6 @@ subprocess.run([
     "-shortest",
     OUTPUT_VIDEO
 ])
-
 print(f"✅ Video created: {OUTPUT_VIDEO}")
 
 # ---------------- STEP 6: UPLOAD TO YOUTUBE ----------------
