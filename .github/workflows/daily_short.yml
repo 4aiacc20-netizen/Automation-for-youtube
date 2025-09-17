@@ -19,7 +19,12 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install --upgrade --force-reinstall moviepy gTTS pillow google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
+          pip install --upgrade --force-reinstall moviepy
+          pip install gTTS pillow google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
+      
+      - name: Verify MoviePy
+        run: |
+          python -c "import moviepy.editor; print('✅ MoviePy imported successfully!')"
 
       - name: Run script
         env:
