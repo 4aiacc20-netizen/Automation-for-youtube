@@ -1,6 +1,6 @@
 import os
 from gtts import gTTS
-from moviepy.editor import *
+import moviepy.editor as mp
 from PIL import Image, ImageDraw, ImageFont
 import google.auth.transport.requests
 from google.oauth2.credentials import Credentials
@@ -16,12 +16,11 @@ tts = gTTS(text=script_text, lang="en")
 tts.save("audio.mp3")
 
 # ============ STEP 3: BACKGROUND VIDEO ============
-# Create a simple background (solid color or image)
 clip_duration = 15  # 15s short
-bg_clip = ColorClip(size=(720,1280), color=(30,30,30), duration=clip_duration)  # black bg
+bg_clip = mp.ColorClip(size=(720, 1280), color=(30, 30, 30), duration=clip_duration)  # black bg
 
 # Add text overlay
-txt_clip = TextClip(
+txt_clip = mp.TextClip(
     script_text,
     fontsize=60,
     color='white',
@@ -31,8 +30,10 @@ txt_clip = TextClip(
 ).set_position('center').set_duration(clip_duration)
 
 # Add audio
-audio = AudioFileClip("audio.mp3")
-final_clip = CompositeVideoClip([bg_clip, txt_clip]).set_audio(audio)
+audio = mp.AudioFileClip("audio.mp3")
+
+# Combine everything
+final_clip = mp.CompositeVideoClip([bg_clip, txt_clip]).set_audio(audio)
 final_clip.write_videofile("short.mp4", fps=24)
 
 # ============ STEP 4: UPLOAD TO YOUTUBE ============
