@@ -2,7 +2,7 @@ name: Daily YouTube Short
 
 on:
   schedule:
-    - cron: '0 13 * * *'   # Runs every day at 13:00 UTC => 18:30 IST
+    - cron: '0 13 * * *'
   workflow_dispatch:
 
 jobs:
@@ -20,12 +20,9 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg fonts-dejavu-core
           python -m pip install --upgrade pip
-          pip install gTTS pillow moviepy google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
-
-      - name: Check FFmpeg
-        run: ffmpeg -version
+          pip install gTTS Pillow google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
 
       - name: Run script
         env:
