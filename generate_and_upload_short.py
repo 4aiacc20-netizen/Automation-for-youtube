@@ -4,52 +4,69 @@ from gtts import gTTS
 from PIL import Image, ImageDraw, ImageFont
 import subprocess
 import datetime
+import textwrap
+import random
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 import google.auth.transport.requests
-import textwrap
 
 # ---------------- CONFIG ----------------
 CLIP_DURATION = 5  # seconds per image
 FONT_SIZE = 70
 MUSIC_FILE = "background_music.mp3"  # optional
-VIDEO_SHORTS_RES = (720, 1280)    # 9:16 vertical
-AUDIO_FILE = "tts_audio.mp3"
-OUTPUT_VIDEO = "shorts_video.mp4"
+VIDEO_SHORTS_RES = (720, 1280)  # 9:16 vertical
+FALLBACK_IMAGE = "fallback.jpg"  # default backup image
 
-# ---------------- STEP 0: FETCH DAILY QUOTE ----------------
-def get_daily_quote():
+HASHTAGS = "#motivation #shorts #inspiration #mindset #success"
+
+# ---------------- STEP 1: FETCH RANDOM QUOTE ----------------
+quote_resp = requests.get("https://zenquotes.io/api/random")
+if quote_resp.status_code == 200:
+    data = quote_resp.json()[0]
+    SCRIPT_TEXT = f"{data['q']} — {data['a']}"
+else:
+    SCRIPT_TEXT = "Believe in yourself and all that you are. — Unknown"
+print("✅ Today's Quote:", SCRIPT_TEXT)
+
+# ---------------- STEP 2: DOWNLOAD IMAGES ----------------
+def download_image(url, filename):
     try:
-        quote_data = requests.get("https://zenquotes.io/api/today").json()
-        return f"{quote_data[0]['q']} — {quote_data[0]['a']}"
-    except:
-        return "Keep pushing forward — Unknown"
+        r = requests.get(url, allow_redirects=True, timeout=10)
+        if r.status_code == 200 and r.headers["Content-Type"].startswith("image"):
+            with open(filename, "wb") as f:
+                f.write(r.content)
+            return True
+    except Exception as e:
+        print("⚠️ Image download failed:", e)
+    return False
 
-SCRIPT_TEXT = get_daily_quote()
-print(f"✅ Today's Quote: {SCRIPT_TEXT}")
-
-# ---------------- STEP 1: FETCH RANDOM IMAGES ----------------
 IMAGE_URLS = [
-    "https://source.unsplash.com/720x1280/?motivation",
-    "https://source.unsplash.com/720x1280/?nature"
+    "https://source.unsplash.com/random/720x1280/?motivation",
+    "https://source.unsplash.com/random/720x1280/?nature",
+    "https://source.unsplash.com/random/720x1280/?success",
+    "https://source.unsplash.com/random/720x1280/?life",
 ]
 
 IMAGE_FILES = []
 for idx, url in enumerate(IMAGE_URLS):
     img_file = f"bg_{idx}.jpg"
-    r = requests.get(url)
-    with open(img_file, "wb") as f:
-        f.write(r.content)
-    IMAGE_FILES.append(img_file)
-print("✅ Background images downloaded")
+    if download_image(url, img_file):
+        IMAGE_FILES.append(img_file)
 
-# ---------------- STEP 2: TTS AUDIO ----------------
+if not IMAGE_FILES:
+    print("⚠️ Using fallback image")
+    IMAGE_FILES = [FALLBACK_IMAGE]
+
+print("✅ Background images ready")
+
+# ---------------- STEP 3: TTS AUDIO ----------------
+AUDIO_FILE = "tts_audio.mp3"
 tts = gTTS(text=SCRIPT_TEXT, lang="en")
 tts.save(AUDIO_FILE)
 print("✅ TTS audio generated")
 
-# ---------------- FUNCTION TO CREATE FRAMES ----------------
+# ---------------- STEP 4: CREATE TEXT IMAGE ----------------
 def create_text_image(bg_image_path, output_path, video_res):
     bg = Image.open(bg_image_path).convert("RGB").resize(video_res)
     draw = ImageDraw.Draw(bg)
@@ -72,17 +89,18 @@ def create_text_image(bg_image_path, output_path, video_res):
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
         x = (video_res[0] - text_w) // 2
-        # shadow for visibility
+        # shadow + text
         draw.text((x+2, current_y+2), line, font=font, fill=(0,0,0))
         draw.text((x, current_y), line, font=font, fill=(255,255,255))
         current_y += text_h + 10
 
-    # add #Shorts watermark
+    # Shorts watermark
     draw.text((10, video_res[1]-80), "#Shorts", font=font, fill=(255,255,255))
+
     bg.save(output_path)
 
-# ---------------- FUNCTION TO CREATE SHORTS VIDEO ----------------
-def create_video(frame_files, output_file):
+# ---------------- STEP 5: CREATE VIDEO ----------------
+def create_video(frame_files, video_res, output_file):
     TMP_VIDEO_CLIPS = []
     for idx, frame_file in enumerate(frame_files):
         clip_file = f"clip_{idx}.mp4"
@@ -99,7 +117,7 @@ def create_video(frame_files, output_file):
         ]
         subprocess.run(ffmpeg_cmd)
     
-    # Concatenate clips
+    # Concatenate
     with open("file_list.txt", "w") as f:
         for clip in TMP_VIDEO_CLIPS:
             f.write(f"file '{clip}'\n")
@@ -136,17 +154,17 @@ def create_video(frame_files, output_file):
         "-shortest",
         output_file
     ])
-    print(f"✅ Shorts Video created: {output_file}")
+    print(f"✅ Video created: {output_file}")
 
-# ---------------- CREATE SHORTS VIDEO ----------------
+# ---------------- STEP 6: GENERATE SHORTS ----------------
 frame_files_shorts = []
 for idx, img_file in enumerate(IMAGE_FILES):
     frame_file = f"frame_shorts_{idx}.png"
     create_text_image(img_file, frame_file, VIDEO_SHORTS_RES)
     frame_files_shorts.append(frame_file)
-create_video(frame_files_shorts, OUTPUT_VIDEO)
+create_video(frame_files_shorts, VIDEO_SHORTS_RES, "shorts_video.mp4")
 
-# ---------------- STEP 6: UPLOAD TO YOUTUBE ----------------
+# ---------------- STEP 7: UPLOAD TO YOUTUBE ----------------
 CLIENT_ID = os.getenv("YT_CLIENT_ID")
 CLIENT_SECRET = os.getenv("YT_CLIENT_SECRET")
 REFRESH_TOKEN = os.getenv("YT_REFRESH_TOKEN")
@@ -163,19 +181,18 @@ youtube = build("youtube", "v3", credentials=creds)
 
 today = datetime.date.today().strftime("%B %d, %Y")
 
-# Upload Shorts video
 request = youtube.videos().insert(
     part="snippet,status",
     body={
         "snippet": {
-            "title": f"Daily Motivation 🚀 #Shorts {today}",
-            "description": SCRIPT_TEXT,
-            "tags": ["Motivation", "Shorts", "AI"],
+            "title": f"Daily Motivation 🚀 {today} #Shorts",
+            "description": f"{SCRIPT_TEXT}\n\n{HASHTAGS}",
+            "tags": ["Motivation", "Shorts", "AI", "Inspiration", "Success", "Mindset"],
             "categoryId": "22"
         },
         "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False}
     },
-    media_body=MediaFileUpload(OUTPUT_VIDEO)
+    media_body=MediaFileUpload("shorts_video.mp4")
 )
 response = request.execute()
 print("✅ Uploaded Shorts video:", response)
