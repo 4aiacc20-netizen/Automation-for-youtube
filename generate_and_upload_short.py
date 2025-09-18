@@ -13,18 +13,18 @@ import google.auth.transport.requests
 
 # ---------------- CONFIG ----------------
 CLIP_DURATION = 5  # seconds per image
-MUSIC_FILE = "background_music.mp3"  # optional
-VIDEO_SHORTS_RES = (720, 1280)  # 9:16 vertical
-FALLBACK_IMAGE = "fallback.jpg"  # default backup image
+MUSIC_FILE = "background_music.mp3"  # optional background music
+VIDEO_SHORTS_RES = (720, 1280)  # vertical 9:16
+FALLBACK_IMAGE = "fallback.jpg"  # backup image
 HASHTAGS = "#motivation #shorts #inspiration #mindset #success"
 
 # ---------------- STEP 1: FETCH RANDOM QUOTE ----------------
 quote_resp = requests.get("https://zenquotes.io/api/random")
 if quote_resp.status_code == 200:
     data = quote_resp.json()[0]
-    SCRIPT_TEXT = f"{data['q']} — {data['a']}"
+    SCRIPT_TEXT = f"{data['q']}\n\n— {data['a']}"  # ✅ clean quote + author
 else:
-    SCRIPT_TEXT = "Believe in yourself and all that you are. — Unknown"
+    SCRIPT_TEXT = "Believe in yourself and all that you are.\n\n— Unknown"
 print("✅ Today's Quote:", SCRIPT_TEXT)
 
 # ---------------- STEP 2: DOWNLOAD IMAGES ----------------
@@ -67,42 +67,37 @@ print("✅ TTS audio generated")
 # ---------------- STEP 4: CREATE TEXT IMAGE ----------------
 def create_text_image(bg_image_path, output_path, video_res, text):
     try:
-        # Open and resize background
         bg = Image.open(bg_image_path).convert("RGB").resize(video_res)
     except Exception as e:
         print(f"⚠️ Failed to load {bg_image_path}, using plain background. Error: {e}")
-        bg = Image.new("RGB", video_res, color=(255, 255, 255))  # fallback white bg
+        bg = Image.new("RGB", video_res, color=(20, 20, 20))  # dark fallback bg
 
     draw = ImageDraw.Draw(bg)
 
-    # Dynamically scale font size (7% of height)
-    font_size = int(video_res[1] * 0.07)
-
-    # Try to load a system font
+    # Bigger font (15% of height)
+    font_size = int(video_res[1] * 0.15)
     try:
         font = ImageFont.truetype("arial.ttf", font_size)
     except:
         font = ImageFont.load_default()
 
-    # Dynamically wrap text
-    max_width = int(video_res[0] / (font_size * 0.6))
-    wrapped_text = textwrap.fill(text, width=max_width)
+    # Wrap text properly
+    max_chars = int(video_res[0] / (font_size * 0.6))
+    wrapped_text = textwrap.fill(text, width=max_chars)
 
-    # Measure size
-    text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
+    # Measure with multiline
+    text_bbox = draw.multiline_textbbox((0, 0), wrapped_text, font=font, align="center")
     text_w = text_bbox[2] - text_bbox[0]
     text_h = text_bbox[3] - text_bbox[1]
 
-    # Center position
     x = (video_res[0] - text_w) // 2
     y = (video_res[1] - text_h) // 2
 
     # Shadow + text
-    shadow_offset = 3
+    shadow_offset = 4
     draw.multiline_text((x+shadow_offset, y+shadow_offset), wrapped_text, font=font, fill="black", align="center")
     draw.multiline_text((x, y), wrapped_text, font=font, fill="white", align="center")
 
-    # Save
     bg.save(output_path)
     print(f"✅ Created text image: {output_path}")
     return output_path
@@ -117,10 +112,10 @@ def create_video(frame_files, video_res, output_file):
             "ffmpeg", "-y",
             "-loop", "1",
             "-i", frame_file,
-            "-c:v", "libx264",
+            "-vf", f"scale={video_res[0]}:{video_res[1]},format=yuv420p",
             "-t", str(CLIP_DURATION),
+            "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
-            "-vf", "zoompan=z='min(zoom+0.0015,1.05)':d=125",
             clip_file
         ]
         subprocess.run(ffmpeg_cmd)
@@ -140,7 +135,7 @@ def create_video(frame_files, video_res, output_file):
         concat_video
     ])
 
-    # Merge audio
+    # Mix audio
     if MUSIC_FILE and os.path.exists(MUSIC_FILE):
         final_audio = f"{output_file}_audio.mp3"
         subprocess.run([
@@ -157,7 +152,7 @@ def create_video(frame_files, video_res, output_file):
         "ffmpeg", "-y",
         "-i", concat_video,
         "-i", final_audio,
-        "-c:v", "copy",
+        "-c:v", "libx264",  # re-encode for Shorts
         "-c:a", "aac",
         "-shortest",
         output_file
@@ -170,6 +165,7 @@ for idx, img_file in enumerate(IMAGE_FILES):
     frame_file = f"frame_shorts_{idx}.png"
     create_text_image(img_file, frame_file, VIDEO_SHORTS_RES, SCRIPT_TEXT)
     frame_files_shorts.append(frame_file)
+
 create_video(frame_files_shorts, VIDEO_SHORTS_RES, "shorts_video.mp4")
 
 # ---------------- STEP 7: UPLOAD TO YOUTUBE ----------------
@@ -195,7 +191,7 @@ request = youtube.videos().insert(
         "snippet": {
             "title": f"Daily Motivation 🚀 {today} #Shorts",
             "description": f"{SCRIPT_TEXT}\n\n{HASHTAGS}",
-            "tags": ["Motivation", "Shorts", "AI", "Inspiration", "Success", "Mindset"],
+            "tags": ["Motivation", "Shorts", "Inspiration", "Success", "Mindset"],
             "categoryId": "22"
         },
         "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False}
