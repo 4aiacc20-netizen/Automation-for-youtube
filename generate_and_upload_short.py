@@ -11,22 +11,30 @@ import google.auth.transport.requests
 import textwrap
 
 # ---------------- CONFIG ----------------
-SCRIPT_TEXT = "Success is not final, failure is not fatal. It is the courage to continue that counts."
 CLIP_DURATION = 5  # seconds per image
 FONT_SIZE = 70
 MUSIC_FILE = "background_music.mp3"  # optional
-
-# Resolutions
-VIDEO_REGULAR_RES = (1280, 720)   # 16:9 horizontal
 VIDEO_SHORTS_RES = (720, 1280)    # 9:16 vertical
+AUDIO_FILE = "tts_audio.mp3"
+OUTPUT_VIDEO = "shorts_video.mp4"
 
-# Unsplash copyright-free images
+# ---------------- STEP 0: FETCH DAILY QUOTE ----------------
+def get_daily_quote():
+    try:
+        quote_data = requests.get("https://zenquotes.io/api/today").json()
+        return f"{quote_data[0]['q']} — {quote_data[0]['a']}"
+    except:
+        return "Keep pushing forward — Unknown"
+
+SCRIPT_TEXT = get_daily_quote()
+print(f"✅ Today's Quote: {SCRIPT_TEXT}")
+
+# ---------------- STEP 1: FETCH RANDOM IMAGES ----------------
 IMAGE_URLS = [
-    "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=720&q=80",
-    "https://images.unsplash.com/photo-1495567720989-cebdbdd97913?auto=format&fit=crop&w=720&q=80"
+    "https://source.unsplash.com/720x1280/?motivation",
+    "https://source.unsplash.com/720x1280/?nature"
 ]
 
-# ---------------- STEP 0: DOWNLOAD IMAGES ----------------
 IMAGE_FILES = []
 for idx, url in enumerate(IMAGE_URLS):
     img_file = f"bg_{idx}.jpg"
@@ -36,14 +44,13 @@ for idx, url in enumerate(IMAGE_URLS):
     IMAGE_FILES.append(img_file)
 print("✅ Background images downloaded")
 
-# ---------------- STEP 1: TTS AUDIO ----------------
-AUDIO_FILE = "tts_audio.mp3"
+# ---------------- STEP 2: TTS AUDIO ----------------
 tts = gTTS(text=SCRIPT_TEXT, lang="en")
 tts.save(AUDIO_FILE)
 print("✅ TTS audio generated")
 
 # ---------------- FUNCTION TO CREATE FRAMES ----------------
-def create_text_image(bg_image_path, output_path, video_res, shorts=False):
+def create_text_image(bg_image_path, output_path, video_res):
     bg = Image.open(bg_image_path).convert("RGB").resize(video_res)
     draw = ImageDraw.Draw(bg)
     try:
@@ -70,14 +77,12 @@ def create_text_image(bg_image_path, output_path, video_res, shorts=False):
         draw.text((x, current_y), line, font=font, fill=(255,255,255))
         current_y += text_h + 10
 
-    if shorts:
-        # add #Shorts watermark
-        draw.text((10, video_res[1]-80), "#Shorts", font=font, fill=(255,255,255))
-
+    # add #Shorts watermark
+    draw.text((10, video_res[1]-80), "#Shorts", font=font, fill=(255,255,255))
     bg.save(output_path)
 
-# ---------------- FUNCTION TO CREATE VIDEO ----------------
-def create_video(frame_files, video_res, output_file):
+# ---------------- FUNCTION TO CREATE SHORTS VIDEO ----------------
+def create_video(frame_files, output_file):
     TMP_VIDEO_CLIPS = []
     for idx, frame_file in enumerate(frame_files):
         clip_file = f"clip_{idx}.mp4"
@@ -131,23 +136,15 @@ def create_video(frame_files, video_res, output_file):
         "-shortest",
         output_file
     ])
-    print(f"✅ Video created: {output_file}")
-
-# ---------------- CREATE REGULAR VIDEO ----------------
-frame_files_regular = []
-for idx, img_file in enumerate(IMAGE_FILES):
-    frame_file = f"frame_regular_{idx}.png"
-    create_text_image(img_file, frame_file, VIDEO_REGULAR_RES, shorts=False)
-    frame_files_regular.append(frame_file)
-create_video(frame_files_regular, VIDEO_REGULAR_RES, "regular_video.mp4")
+    print(f"✅ Shorts Video created: {output_file}")
 
 # ---------------- CREATE SHORTS VIDEO ----------------
 frame_files_shorts = []
 for idx, img_file in enumerate(IMAGE_FILES):
     frame_file = f"frame_shorts_{idx}.png"
-    create_text_image(img_file, frame_file, VIDEO_SHORTS_RES, shorts=True)
+    create_text_image(img_file, frame_file, VIDEO_SHORTS_RES)
     frame_files_shorts.append(frame_file)
-create_video(frame_files_shorts, VIDEO_SHORTS_RES, "shorts_video.mp4")
+create_video(frame_files_shorts, OUTPUT_VIDEO)
 
 # ---------------- STEP 6: UPLOAD TO YOUTUBE ----------------
 CLIENT_ID = os.getenv("YT_CLIENT_ID")
@@ -166,23 +163,6 @@ youtube = build("youtube", "v3", credentials=creds)
 
 today = datetime.date.today().strftime("%B %d, %Y")
 
-# Upload regular video
-request = youtube.videos().insert(
-    part="snippet,status",
-    body={
-        "snippet": {
-            "title": f"Daily Motivation 🚀 {today}",
-            "description": SCRIPT_TEXT,
-            "tags": ["Motivation", "AI"],
-            "categoryId": "22"
-        },
-        "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False}
-    },
-    media_body=MediaFileUpload("regular_video.mp4")
-)
-response = request.execute()
-print("✅ Uploaded regular video:", response)
-
 # Upload Shorts video
 request = youtube.videos().insert(
     part="snippet,status",
@@ -195,7 +175,7 @@ request = youtube.videos().insert(
         },
         "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False}
     },
-    media_body=MediaFileUpload("shorts_video.mp4")
+    media_body=MediaFileUpload(OUTPUT_VIDEO)
 )
 response = request.execute()
 print("✅ Uploaded Shorts video:", response)
